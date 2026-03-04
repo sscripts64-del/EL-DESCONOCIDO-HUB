@@ -1,0 +1,242 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
+
+-- Rayfield estable
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua"))()
+local Window = Rayfield:CreateWindow({
+    Name = "🗡️ ELDESCONOCIDO HUB V3 - DUELS MVS",
+    LoadingTitle = "Cargando...",
+    LoadingSubtitle = "BY ELDESCONOCIDO123",
+    ConfigurationSaving = {Enabled = true, FolderName = "GrokDuelsV3", FileName = "Config"},
+    KeySystem = false
+})
+
+-- Variables
+local aimDistance = 500
+local clickShoot = false
+local autoShoot = false
+local espEnabled = false
+local hitboxEnabled = false
+local hitboxSize = 20
+local lastShot = 0
+local shotDelay = 0.1
+local currentWeapon = nil
+local BlockClick = true
+local espHighlights = {}
+local connections = {}
+
+-- === ESP ARREGLADO (universal - funciona siempre) ===
+local function createESP(player)
+    if player == LocalPlayer then return end
+    local highlight = Instance.new("Highlight")
+    highlight.FillColor = Color3.new(1, 0, 0)
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.FillTransparency = 0.3
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Adornee = player.Character
+    highlight.Parent = player.Character
+    espHighlights[player] = highlight
+end
+
+local function updateESP()
+    for player, hl in pairs(espHighlights) do
+        if not player.Character or player.Character:FindFirstChild("HumanoidRootPart") == nil then
+            hl:Destroy()
+            espHighlights[player] = nil
+        end
+    end
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and not espHighlights[player] then
+            createESP(player)
+        end
+    end
+end
+
+-- === WEAPON & SHOOT (igual que antes, funciona) ===
+local function updateWeapon()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local tool = nil
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Tool") and (v:FindFirstChild("fire") or v:FindFirstChild("kill")) then
+            tool = v
+            break
+        end
+    end
+    if tool ~= currentWeapon then
+        currentWeapon = tool
+    end
+end
+
+local function getClosestEnemy()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+    local hrp = char.HumanoidRootPart
+    local closest, dist = nil, aimDistance
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character.Humanoid.Health > 0 then
+            local d = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
+            if d < dist then
+                closest = p
+                dist = d
+            end
+        end
+    end
+    return closest
+end
+
+local function shoot(target)
+    if tick() - lastShot < shotDelay then return end
+    lastShot = tick()
+    if not currentWeapon then return end
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = char.HumanoidRootPart
+    local tchar = target.Character
+    if not tchar then return end
+    local thrp = tchar.HumanoidRootPart
+    local dir = (thrp.Position - hrp.Position).Unit
+
+    pcall(function()
+        if currentWeapon:FindFirstChild("fire") then currentWeapon.fire:FireServer() end
+        if currentWeapon:FindFirstChild("kill") then currentWeapon.kill:FireServer(target, dir, hrp.Position) end
+    end)
+end
+
+-- === INVISIBLE & FLY (nuevo tab) ===
+local invisibleEnabled = false
+local function toggleInvisible(state)
+    invisibleEnabled = state
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.Transparency = state and 1 or 0
+        end
+    end
+end
+
+-- Fly Tool (ITEM DE VOLAR INVISIBLE)
+local flyTool
+local function giveFlyTool()
+    if flyTool and flyTool.Parent then flyTool:Destroy() end
+    flyTool = Instance.new("Tool")
+    flyTool.Name = "👻 Invisible Fly Tool"
+    flyTool.RequiresHandle = false
+    flyTool.Parent = LocalPlayer.Backpack
+
+    local flying = false
+    local bg, bv, flyConn
+
+    flyTool.Activated:Connect(function()
+        local char = LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        flying = not flying
+        toggleInvisible(flying) -- vuela + invisible al mismo tiempo
+
+        if flying then
+            bg = Instance.new("BodyGyro", char.HumanoidRootPart)
+            bg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            bg.P = 9e4
+            bv = Instance.new("BodyVelocity", char.HumanoidRootPart)
+            bv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            flyConn = RunService.Heartbeat:Connect(function()
+                local cam = Workspace.CurrentCamera
+                local vel = Vector3.new()
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0,1,0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then vel = vel - Vector3.new(0,1,0) end
+                bv.Velocity = vel.Unit * 70
+            end)
+        else
+            if flyConn then flyConn:Disconnect() end
+            if bg then bg:Destroy() end
+            if bv then bv:Destroy() end
+            toggleInvisible(false)
+        end
+    end)
+end
+
+-- === TABS ===
+local Combat = Window:CreateTab("⚔️ Combat", 4483362458)
+Combat:CreateSlider({Name = "Distancia de Aim", Range = {50, 2000}, Increment = 50, CurrentValue = 500, Callback = function(v) aimDistance = v end})
+Combat:CreateToggle({Name = "Click Shoot", CurrentValue = false, Callback = function(v) clickShoot = v end})
+Combat:CreateToggle({Name = "Auto Shoot", CurrentValue = false, Callback = function(v) autoShoot = v end})
+Combat:CreateButton({Name = "Kill All no funciona ", Callback = function() for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then shoot(p) end end end})
+
+local Visuals = Window:CreateTab("👁️ Visuals", 4483362458)
+Visuals:CreateToggle({Name = "ESP Enemigos (FIXED)", CurrentValue = false, Callback = function(v) espEnabled = v end})
+Visuals:CreateToggle({Name = "Hitbox Expander", CurrentValue = false, Callback = function(v) hitboxEnabled = v end})
+Visuals:CreateSlider({Name = "Tamaño Hitbox", Range = {10, 50}, Increment = 2, CurrentValue = 20, Callback = function(v) hitboxSize = v end})
+
+local InvisibleTab = Window:CreateTab("👻 Invisible & Fly", 4483362458)
+InvisibleTab:CreateToggle({Name = "Invisible (Personaje)", CurrentValue = false, Callback = toggleInvisible})
+InvisibleTab:CreateButton({Name = "Dar Item de Volar Invisible 👟", Callback = giveFlyTool})
+InvisibleTab:CreateToggle({Name = "Fly Normal (WASD)", CurrentValue = false, Callback = function(v) 
+    -- (usa el mismo sistema del tool pero sin invisible)
+    -- aquí va el fly simple si no quieres usar el tool
+end})
+InvisibleTab:CreateSlider({Name = "Velocidad (Speed Hack)", Range = {16, 200}, Increment = 4, CurrentValue = 16, Callback = function(v)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then char.Humanoid.WalkSpeed = v end
+end})
+InvisibleTab:CreateSlider({Name = "Jump Power", Range = {50, 300}, Increment = 10, CurrentValue = 50, Callback = function(v)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then char.Humanoid.JumpPower = v end
+end})
+InvisibleTab:CreateToggle({Name = "Infinite Jump", CurrentValue = false, Callback = function(v)
+    if v then
+        connections.infJump = UserInputService.JumpRequest:Connect(function() LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Jumping) end)
+    else
+        if connections.infJump then connections.infJump:Disconnect() end
+    end
+end})
+
+-- Loops
+Mouse.Button1Down:Connect(function()
+    if clickShoot then
+        local t = getClosestEnemy()
+        if t then shoot(t) end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.1) do
+        updateWeapon()
+        if autoShoot then
+            local t = getClosestEnemy()
+            if t then shoot(t) end
+        end
+        if hitboxEnabled then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    p.Character.HumanoidRootPart.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    p.Character.HumanoidRootPart.Transparency = 0.7
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.3) do
+        if espEnabled then updateESP() else
+            for p, hl in pairs(espHighlights) do hl:Destroy() espHighlights[p] = nil end
+        end
+    end
+end)
+
+-- CharacterAdded para ESP
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function() task.wait(1) if espEnabled then updateESP() end end)
+end)
